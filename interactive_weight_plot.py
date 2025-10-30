@@ -36,8 +36,6 @@ class InteractiveWeightPlot:
         self.trend_end_idx = None
         self.trend_line = None
         self.trend_text = None
-        self.dragging_start = False
-        self.dragging_end = False
         
         # Visual feedback for selected points
         self.start_marker = None
@@ -51,20 +49,31 @@ class InteractiveWeightPlot:
         """Set up the matplotlib figure and plot"""
         self.fig, self.ax = plt.subplots(figsize=(12, 8))
         
-        # Plot individual data points
+        # Pick a categorical color palette (handle up to 20 weeks)
+        color_palette = plt.get_cmap('tab20')
+        unique_weeks = sorted(self.df['Week'].unique())
+        week_to_color = {week: color_palette(i % 20) for i, week in enumerate(unique_weeks)}
+
+        # Assign a color to each row for its week
+        self.df['Color'] = self.df['Week'].map(week_to_color)
+        # For weekly averages: use color for that week
+        weekly_colors = [week_to_color[week] for week in self.weekly_avg.index]
+
+        # Plot individual data points, colored by week
         self.ax.scatter(self.df.index, self.df['Daily Average'], 
-                       color='lightblue', s=30, alpha=0.6, label='Daily Weight')
-        
-        # Plot weekly averages as scatter points for individual color control
+                       color=self.df['Color'], s=30, alpha=0.7, label='Daily Weight')
+
+        # Plot weekly averages as bigger dots using matching colors
         self.weekly_scatter = self.ax.scatter(self.week_starts, self.weekly_avg.values, 
-                                             c='red', s=60, zorder=5, label='Weekly Average')
-        
-        # Draw lines between weekly averages
+                                             c=weekly_colors, s=60, zorder=5, label='Weekly Average')
+
+        # Draw lines between weekly averages (keep a single color for clarity)
         self.weekly_line, = self.ax.plot(self.week_starts, self.weekly_avg.values, 
-                                       'r-', linewidth=2, alpha=0.7, zorder=4)
-        
-        # Initialize point colors tracking
-        self.point_colors = ['red'] * len(self.week_starts)
+                                       color='gray', linewidth=2, alpha=0.7, zorder=4)
+
+        # Store for potential downstream usage
+        self.point_colors = list(weekly_colors)
+        self.week_colors = list(weekly_colors)  # <-- Save the canonical color mapping
         
         # Add vertical lines for each week boundary
         for week_start in self.week_starts:
@@ -84,8 +93,7 @@ class InteractiveWeightPlot:
         
         # Connect mouse events
         self.fig.canvas.mpl_connect('button_press_event', self.on_click)
-        self.fig.canvas.mpl_connect('motion_notify_event', self.on_motion)
-        self.fig.canvas.mpl_connect('button_release_event', self.on_release)
+        # Removed motion_notify_event and button_release_event connections (dragging endpoints no longer supported)
         
         # Add instructions
         self.add_instructions()
@@ -98,7 +106,6 @@ class InteractiveWeightPlot:
         instructions = ("Instructions:\n"
                        "• Left-click on weekly average points to set trend line\n"
                        "• Right-click to reset/clear trend line\n"
-                       "• Drag the trend line endpoints to adjust them\n"
                        "• Trend line will snap to weekly averages")
         
         self.ax.text(0.02, 0.98, instructions, transform=self.ax.transAxes,
@@ -143,13 +150,11 @@ class InteractiveWeightPlot:
             if self.trend_start_idx is None:
                 # Set start point
                 self.trend_start_idx = closest_idx
-                self.dragging_start = True
                 self.highlight_point(closest_idx, 'green')
                 print(f"Trend line start set to Week {closest_idx}: {self.weekly_avg.index[closest_idx]} → {self.weekly_avg.iloc[closest_idx]:.2f} kg")
             elif self.trend_end_idx is None:
                 # Set end point
                 self.trend_end_idx = closest_idx
-                self.dragging_end = True
                 self.highlight_point(closest_idx, 'green')
                 print(f"Trend line end set to Week {closest_idx}: {self.weekly_avg.index[closest_idx]} → {self.weekly_avg.iloc[closest_idx]:.2f} kg")
                 self.draw_trend_line()
@@ -158,7 +163,6 @@ class InteractiveWeightPlot:
                 self.clear_trend_line()
                 self.trend_start_idx = closest_idx
                 self.trend_end_idx = None  # Reset end point
-                self.dragging_start = True
                 self.highlight_point(closest_idx, 'green')
                 print(f"Reset: Trend line start set to Week {closest_idx}: {self.weekly_avg.index[closest_idx]} → {self.weekly_avg.iloc[closest_idx]:.2f} kg")
         
@@ -171,28 +175,13 @@ class InteractiveWeightPlot:
     
     def on_motion(self, event):
         """Handle mouse motion events for dragging"""
-        if event.inaxes != self.ax:
-            return
-        
-        if self.dragging_start and self.trend_start_idx is not None:
-            closest_idx = self.find_closest_week_index(event.xdata)
-            if closest_idx is not None and closest_idx != self.trend_start_idx:
-                self.trend_start_idx = closest_idx
-                print(f"Dragging start to Week {closest_idx}: {self.weekly_avg.index[closest_idx]} → {self.weekly_avg.iloc[closest_idx]:.2f} kg")
-                if self.trend_end_idx is not None:
-                    self.draw_trend_line()
-        
-        elif self.dragging_end and self.trend_end_idx is not None:
-            closest_idx = self.find_closest_week_index(event.xdata)
-            if closest_idx is not None and closest_idx != self.trend_end_idx:
-                self.trend_end_idx = closest_idx
-                print(f"Dragging end to Week {closest_idx}: {self.weekly_avg.index[closest_idx]} → {self.weekly_avg.iloc[closest_idx]:.2f} kg")
-                self.draw_trend_line()
+        # Functionality removed (dragging endpoints no longer supported)
+        pass
     
     def on_release(self, event):
         """Handle mouse release events"""
-        self.dragging_start = False
-        self.dragging_end = False
+        # Functionality removed (dragging endpoints no longer supported)
+        pass
     
     def draw_trend_line(self):
         """Draw or update the trend line"""
@@ -245,17 +234,15 @@ class InteractiveWeightPlot:
         self.fig.canvas.draw()
     
     def highlight_point(self, idx, color='green'):
-        """Change the color of a specific weekly average point"""
-        # Update the specific point color in our tracking array
+        """Change the color of a specific weekly average point temporarily (e.g. for highlight)"""
+        # Change color at idx, keep others as is
         self.point_colors[idx] = color
-        
-        # Update the scatter plot colors
         self.weekly_scatter.set_color(self.point_colors)
         self.fig.canvas.draw()
-    
+
     def reset_point_colors(self):
-        """Reset all weekly average points to their original red color"""
-        self.point_colors = ['red'] * len(self.week_starts)
+        """Reset all weekly average points to their canonical week color"""
+        self.point_colors = list(self.week_colors)
         self.weekly_scatter.set_color(self.point_colors)
         self.fig.canvas.draw()
     
